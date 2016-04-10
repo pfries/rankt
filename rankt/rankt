@@ -1,0 +1,201 @@
+#!/usr/bin/env python
+# -- coding: utf-8 --
+from __future__ import print_function
+from collections import namedtuple
+from datetime import datetime
+from query import Query
+from snapshot import Snapshot
+import os, json, hashlib, time, sys, yaml
+
+def parse(response):
+    return parse_solr(response)
+
+def parse_solr(response):
+    solr_response = response.json()
+    docs = solr_response['response']['docs']
+    debug = solr_response['debug']
+    parsed_query = debug['parsedquery']
+
+    positions = []
+    Position = namedtuple('Position', ['doc_position', 'documentid', 'doc_score',
+    'doc_explain', 'query_string', 'parsed_query'])
+    for idx, doc in enumerate(docs):
+        explain = debug['explain'][doc['documentid']]
+        
+        p = {
+                "doc_position": idx+1, 
+                "documentid": doc['documentid'], 
+                "doc_score": doc['score'],
+                "doc_explain": explain,
+                "parsed_query": parsed_query
+            }
+        positions.append(p)
+    return positions
+
+def store(query_keywords, ranked_results, snapshot, endpoint, timestamp):
+    store_es(query_keywords, ranked_results, snapshot, endpoint, timestamp)
+
+def store_es(query_keywords, ranked_results, snapshot, endpoint, timestamp):
+    ''' Store in Elasticsearch '''
+    for d in ranked_results:
+        snapshot_params = {
+                "timestamp": timestamp,
+                "keywords": query_keywords,
+                "snapshot": snapshot,
+                }
+        d.update(snapshot_params)
+
+        joined_id = ''.join([query_keywords, snapshot, str(r.doc_position), r.documentid])
+
+        hashed_id = hashlib.sha1(joined_id.encode()).hexdigest()
+
+        res = requests.put('/'.join([endpoint, hashed_id]), data=json.dumps(d))
+
+def initialized():
+    return os.path.exists('config.yml')
+
+def init(args):
+    if initialized():
+        raise RuntimeError(
+        'Directory already initialized -- rm config.yml to re-initialize.')
+
+    with open(args.master_config) as f:
+        config = yaml.load(f)
+        cases_path = config['cases_path'] or 'cases'
+        try:
+            os.makedirs(cases_path)
+        except OSError:
+            raise RuntimeError('Found cases. Aborting.')
+
+        project_config = {
+                'project_name': args.project_name,
+                'search_url': args.search_url
+                }
+        
+        with open('config.yml', 'w') as c:
+            c.write(yaml.dump(project_config, default_flow_style=False))
+
+def create(args):
+    if not initialized():
+        raise Exception('Must initialize project before creating case')
+
+    config = make_config(args)
+    try:
+        os.makedirs(config['queries_path'])
+
+        default_keywords = os.path.join(config['case_path'], 'keywords')
+        if args.keywords:
+            with open(args.keywords) as f:
+                with open(default_keywords, 'w') as q:
+                    for line in f:
+                        q.write(line)
+        elif not sys.stdin.isatty():
+            with open(default_keywords, 'w') as q:
+                for line in sys.stdin:
+                    q.write(line)
+
+    except OSError as ose:
+        raise RuntimeError('Cannot create case.') from ose
+
+def snapshot(args):
+    args.run_datetime = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    args.run_timestamp = str(int(time.time()))
+    args.snapshot = args.snapshot if args.snapshot else \
+    '_'.join([args.case,args.query,args.run_timestamp])
+
+    config = make_config(args)
+    
+    Snapshot(config).snapshot()
+
+def make_config(args):
+    with open(args.master_config) as m, open('config.yml') as p:
+        config = yaml.load(m)
+        project_config = yaml.load(p)
+        config.update(project_config)
+        config.update(vars(args))
+        if args.__dict__.get('case'):
+            config['case'] = args.case
+            config['case_path'] = os.path.join(config['cases_path'], args.case)
+            config['queries_path'] = os.path.join(config['case_path'], config['queries_path'])
+        return config
+
+def format_output(response, format):
+    if format == 'json':
+        return json.dumps(parse(response))
+    elif format == 'text':
+        return str(parse(response))
+    else:
+        print(response)
+
+def query(args):
+    try:
+        config = make_config(args)
+        query = Query(config['queries_path'])
+        query.load_query(config['query'])
+        if args.keywords:
+            with open(args.keywords) as f:
+                for keywords in f:
+                    keywords = keywords.strip()
+                    kw = keywords.split()
+                    qs = query.render(keywords=kw)
+                    r = query.fetch(config['search_url'], config.get('optional_params',{}), qs)
+                    sys.stdout.write(format_output(r, args.output))
+        elif not sys.stdin.isatty():
+            for keywords in sys.stdin:
+                    keywords = keywords.strip()
+                    kw = keywords.split()
+                    qs = query.render(keywords=kw)
+                    r = query.fetch(config['search_url'], config.get('optional_params',{}), qs)
+                    sys.stdout.write(format_output(r, args.output))
+        else:
+            raise RuntimeError('Missing keywords.')
+    except Exception as e:
+        raise RuntimeError('An error occured.') from e
+
+def main():
+    import argparse
+
+    master_config = os.path.join(
+            os.path.expanduser('~'),
+            '.rankt/config.yml')
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', '-c', dest='master_config', default=master_config)
+    subparsers = parser.add_subparsers()
+
+    init_parser = subparsers.add_parser('init', help='initialize a project')
+    init_parser.add_argument('--search-url', '-u', required=True)
+    init_parser.add_argument('project_name', nargs='?',
+            default=os.path.basename(os.getcwd()), 
+            help='name of the project (default: pwd)'
+            )
+    init_parser.set_defaults(func=init)
+
+    create_parser = subparsers.add_parser('create', help='create a new case')
+    create_parser.add_argument('case', help='the name of the case')
+    create_parser.add_argument('--keywords', '-k', nargs='?')
+    create_parser.set_defaults(func=create)
+
+    snapshot_parser = subparsers.add_parser('snapshot', help='snapshot a case')
+    snapshot_parser.add_argument('case', help='the case to snapshot')
+    snapshot_parser.add_argument('--keywords', '-k', nargs='?')
+    snapshot_parser.add_argument('-q', '--query', help='the case to snapshot')
+    snapshot_parser.add_argument('-s', '--snapshot', help='tag for snapshot')
+    snapshot_parser.set_defaults(func=snapshot)
+
+    query_parser = subparsers.add_parser('query', help='query the search engine')
+    query_parser.add_argument('case', help='the case to snapshot')
+    query_parser.add_argument('--keywords', '-k', nargs='?')
+    query_parser.add_argument('-q', '--query', help='the case to snapshot')
+    query_parser.add_argument('--output', '-o', nargs=1,
+            choices=['json','text'], default='json')
+    query_parser.add_argument('--explain-only', '-E')
+    query_parser.set_defaults(func=query)
+
+    diff_parser = subparsers.add_parser('diff', help='diff search results')
+
+    args = parser.parse_args()
+    args.func(args)
+
+if __name__ == '__main__':
+    main()

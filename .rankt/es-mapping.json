@@ -1,0 +1,41 @@
+{
+    "mappings": {
+        "snapshot": {
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "index": "not_analyzed"
+                },
+                "case": {
+                    "type": "string",
+                    "index": "not_analyzed"
+                },
+                "keywords": {
+                    "type": "string",
+                    "index": "not_analyzed"
+                },
+                "doc_position": {
+                    "type": "integer"
+                },
+                "documentid": {
+                    "type": "string",
+                    "index": "not_analyzed"
+                },
+                "explain": {
+                    "type": "string",
+                    "index": "not_analyzed"
+                },
+                "snapshot": {
+                    "type": "integer"
+                },
+                "snapshot_tags": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "date",
+                    "format": "date_optional_time"
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,4 @@
+cases_path: cases
+queries_path: queries
+mapping: es-mapping.json
+store_endpoint: http://localhost:9200/rankt/position

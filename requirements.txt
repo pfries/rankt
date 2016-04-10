@@ -1,0 +1,15 @@
+Jinja2==2.8
+MarkupSafe==0.23
+PyYAML==3.11
+SQLAlchemy==1.0.12
+click==6.3
+csvkit==0.9.1
+future==0.15.2
+jdcal==1.2
+openpyxl==2.2.0b1
+proselint==0.3.6
+python-dateutil==2.2
+requests==2.9.1
+six==1.10.0
+tika==1.11
+xlrd==0.9.4
