@@ -41,16 +41,17 @@ class Snapshot():
         kw = keywords.split()
         qs = self.query.render(keywords=kw)
         r = self.query.fetch(self.config['search_url'], self.config.get('optional_params',{}), qs)
-        p = parse(r)
+        p = parse(r, self.config.get('store_fields'))
         store(keywords, p, self.config)
 
-def get_snapshot_aggregation(project, case, size, endpoint):
+def get_snapshot_aggregation(project, case, size, endpoint, page_size=10):
     query = Query('/home/peter/.rankt/aggs')
     previous = query.load_query('keywords-by-snapshot.json')
     json = query.render(
             project=project,
             case=case,
-            size=size
+            size=size,
+            page_size=page_size
             )
     q = '/'.join([
         endpoint, 
@@ -106,11 +107,6 @@ def diff_last_two(project, case, endpoint):
 
 def calculate_churn(results1, results2):
     ''' Churn is a measure of how different the two results are.'''
-    results2.pop('manufacturing', None)
-    results2['sporting goods'] = list(reversed(results2['sporting goods']))
-    results2['elisa'].pop(1)
-    results2['property manager'][0], results2['property manager'][1] = results2['property manager'][1], results2['property manager'][0]
-
     churn_report = {
             'churn_score': 0.0,
             'keywords': {}
@@ -123,7 +119,7 @@ def calculate_churn(results1, results2):
             if i != j:
                 diff.append(i)
         set_diff = len(set(a) - set(b)) or 1
-        kw_churn_score = set_diff * (len(diff) or 1) * .1
+        kw_churn_score = (set_diff * (len(diff) or 1))
         churn_report['keywords'][keyword] = {
                 'positional_changes': diff,
                 'set_difference': set_diff,

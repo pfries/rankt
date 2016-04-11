@@ -1,7 +1,7 @@
-def parse(response):
-    return parse_solr(response)
+def parse(response, store_fields={}):
+    return parse_solr(response, store_fields)
 
-def parse_solr(response):
+def parse_solr(response, store_fields={}):
     solr_response = response.json()
     docs = solr_response['response']['docs']
     debug = solr_response['debug']
@@ -16,5 +16,8 @@ def parse_solr(response):
                 "doc_explain": debug['explain'][doc['documentid']],
                 "parsed_query": parsed_query
             }
+        for k,v in store_fields.items():
+            p[k] = doc[v]
+
         positions.append(p)
     return positions
