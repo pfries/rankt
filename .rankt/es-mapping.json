@@ -2,11 +2,21 @@
     "mappings": {
         "snapshot": {
             "properties": {
-                "project": {
+                "case": {
                     "type": "string",
                     "index": "not_analyzed"
                 },
-                "case": {
+                "doc_explain": {
+                    "type": "string",
+                    "index": "not_analyzed"
+                },
+                "doc_position": {
+                    "type": "long"
+                },
+                "doc_score": {
+                    "type": "double"
+                },
+                "documentid": {
                     "type": "string",
                     "index": "not_analyzed"
                 },
@@ -14,26 +24,20 @@
                     "type": "string",
                     "index": "not_analyzed"
                 },
-                "doc_position": {
-                    "type": "integer"
-                },
-                "documentid": {
+                "parsed_query": {
                     "type": "string",
                     "index": "not_analyzed"
                 },
-                "explain": {
+                "project": {
                     "type": "string",
                     "index": "not_analyzed"
                 },
                 "snapshot": {
-                    "type": "integer"
-                },
-                "snapshot_tags": {
-                    "type": "string"
+                    "type": "long"
                 },
                 "timestamp": {
                     "type": "date",
-                    "format": "date_optional_time"
+                    "format": "strict_date_optional_time||epoch_millis"
                 }
             }
         }

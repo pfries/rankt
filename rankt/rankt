@@ -5,51 +5,9 @@ from collections import namedtuple
 from datetime import datetime
 from query import Query
 from snapshot import Snapshot
-import os, json, hashlib, time, sys, yaml
-
-def parse(response):
-    return parse_solr(response)
-
-def parse_solr(response):
-    solr_response = response.json()
-    docs = solr_response['response']['docs']
-    debug = solr_response['debug']
-    parsed_query = debug['parsedquery']
-
-    positions = []
-    Position = namedtuple('Position', ['doc_position', 'documentid', 'doc_score',
-    'doc_explain', 'query_string', 'parsed_query'])
-    for idx, doc in enumerate(docs):
-        explain = debug['explain'][doc['documentid']]
-        
-        p = {
-                "doc_position": idx+1, 
-                "documentid": doc['documentid'], 
-                "doc_score": doc['score'],
-                "doc_explain": explain,
-                "parsed_query": parsed_query
-            }
-        positions.append(p)
-    return positions
-
-def store(query_keywords, ranked_results, snapshot, endpoint, timestamp):
-    store_es(query_keywords, ranked_results, snapshot, endpoint, timestamp)
-
-def store_es(query_keywords, ranked_results, snapshot, endpoint, timestamp):
-    ''' Store in Elasticsearch '''
-    for d in ranked_results:
-        snapshot_params = {
-                "timestamp": timestamp,
-                "keywords": query_keywords,
-                "snapshot": snapshot,
-                }
-        d.update(snapshot_params)
-
-        joined_id = ''.join([query_keywords, snapshot, str(r.doc_position), r.documentid])
-
-        hashed_id = hashlib.sha1(joined_id.encode()).hexdigest()
-
-        res = requests.put('/'.join([endpoint, hashed_id]), data=json.dumps(d))
+from parser import parse
+from store import store
+import os, json, time, sys, yaml
 
 def initialized():
     return os.path.exists('config.yml')
@@ -98,10 +56,8 @@ def create(args):
         raise RuntimeError('Cannot create case.') from ose
 
 def snapshot(args):
-    args.run_datetime = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    args.run_datetime = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
     args.run_timestamp = str(int(time.time()))
-    args.snapshot = args.snapshot if args.snapshot else \
-    '_'.join([args.case,args.query,args.run_timestamp])
 
     config = make_config(args)
     
@@ -165,7 +121,7 @@ def main():
 
     init_parser = subparsers.add_parser('init', help='initialize a project')
     init_parser.add_argument('--search-url', '-u', required=True)
-    init_parser.add_argument('project_name', nargs='?',
+    init_parser.add_argument('project', nargs='?',
             default=os.path.basename(os.getcwd()), 
             help='name of the project (default: pwd)'
             )
