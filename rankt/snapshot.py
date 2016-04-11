@@ -1,10 +1,11 @@
 import os, requests, json
 from collections import OrderedDict
 from itertools import zip_longest
-from sys import stdin
+from sys import stdin, stdout
 from query import Query
 from parser import parse
 from store import store
+from hashlib import sha1
 
 class Snapshot():
     def __init__(self, config):
@@ -37,12 +38,25 @@ class Snapshot():
 
     def snapshot_keywords(self, keywords):
         keywords = keywords.strip()
-        print('Snapshotting "{}"'.format(keywords))
         kw = keywords.split()
         qs = self.query.render(keywords=kw)
         r = self.query.fetch(self.config['search_url'], self.config.get('optional_params',{}), qs)
         p = parse(r, self.config.get('store_fields'))
-        store(keywords, p, self.config)
+        store_endpoint = self.config['store_endpoint']
+        for d in p:
+            snapshot_params = {
+                    "project": self.config['project'],
+                    "case": self.config['case'],
+                    "query": self.config['query'],
+                    "snapshot": self.config['snapshot'], 
+                    "timestamp": self.config['run_datetime'],
+                    "keywords": keywords
+                    }
+
+            d.update(snapshot_params)
+            stdout.write(json.dumps(d))
+
+
 
 def get_snapshot_aggregation(project, case, size, endpoint, page_size=10):
     query = Query('/home/peter/.rankt/aggs')

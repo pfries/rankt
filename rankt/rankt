@@ -4,10 +4,10 @@ from __future__ import print_function
 from collections import namedtuple
 from datetime import datetime
 from query import Query
-from snapshot import Snapshot
+from snapshot import Snapshot, diff_last_two
 from snapshot import diff_last_two
-from parser import parse
 from store import store
+from parser import parse
 import os, json, time, sys, yaml
 
 def initialized():
@@ -114,6 +114,23 @@ def diff(args):
     d = diff_last_two(config['project'], config['case'], config['store_endpoint'])
     print(json.dumps(d))
 
+def store_document(args):
+    config = make_config(args)
+
+    if not sys.stdin.isatty():
+        for d in sys.stdin:
+            doc = json.loads(d)
+            joined_id = '{}{}{}{}{}'.format(
+                    doc['project'],
+                    doc['case'],
+                    doc['keywords'],
+                    doc['snapshot'],
+                    doc['documentid'])
+            
+            hashed_id = sha1(joined_id.encode()).hexdigest()
+            endpoint = '/'.join([config['store_endpoint'], args.store_type, hashed_id])
+            store(endpoint, doc)
+
 def main():
     import argparse
 
@@ -157,6 +174,10 @@ def main():
     diff_parser = subparsers.add_parser('diff', help='diff search results')
     diff_parser.add_argument('case', help='the name of the case')
     diff_parser.set_defaults(func=diff)
+
+    store_parser = subparsers.add_parser('store', help='store documents')
+    store_parser.add_argument('store_type', help='the type of the document')
+    store_parser.set_defaults(func=store_document)
 
     args = parser.parse_args()
     args.func(args)
