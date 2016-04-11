@@ -5,6 +5,7 @@ from collections import namedtuple
 from datetime import datetime
 from query import Query
 from snapshot import Snapshot
+from snapshot import diff_last_two
 from parser import parse
 from store import store
 import os, json, time, sys, yaml
@@ -108,6 +109,11 @@ def query(args):
     except Exception as e:
         raise RuntimeError('An error occured.') from e
 
+def diff(args):
+    config = make_config(args)
+    d = diff_last_two(config['project'], config['case'], config['store_endpoint'])
+    print(json.dumps(d))
+
 def main():
     import argparse
 
@@ -149,6 +155,8 @@ def main():
     query_parser.set_defaults(func=query)
 
     diff_parser = subparsers.add_parser('diff', help='diff search results')
+    diff_parser.add_argument('case', help='the name of the case')
+    diff_parser.set_defaults(func=diff)
 
     args = parser.parse_args()
     args.func(args)
