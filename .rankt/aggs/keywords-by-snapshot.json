@@ -16,25 +16,26 @@
         }
     },
     "aggregations": {
-        "keywords": {
+        "snapshots": {
             "terms": {
-                "field": "keywords"
+                "field": "snapshot",
+                "order" : { "_term" : "desc" },
+                "size": {{ size }}
             },
             "aggregations": {
-                "snapshots": {
+                "keywords": {
                     "terms": {
-                        "field": "snapshot",
-                        "size": 1,
-                        "order" : { "_term" : "desc" }
+                        "field": "keywords",
+                        "order" : { "_term" : "asc" }
                     },
                     "aggregations": {
-                        "hits": {
+                        "doc_positions": {
                             "top_hits": { 
                                 "sort": {
                                     "doc_position": "asc"  
                                 },
                                 "_source": {
-                                    "include": [ "documentid", "doc_position", "doc_explain" ]
+                                    "include": [ "documentid", "doc_position", "doc_explain", "doc_score" ]
                                 },
                                 size: 10
                             }

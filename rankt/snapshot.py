@@ -1,4 +1,6 @@
 import os, requests, json
+from collections import OrderedDict
+from sys import stdin
 from query import Query
 from parser import parse
 from store import store
@@ -22,8 +24,8 @@ class Snapshot():
             with open(self.config['keywords']) as f:
                 for keywords in f:
                     self.snapshot_keywords(keywords)
-        elif not sys.stdin.isatty():
-            for keywords in sys.stdin:
+        elif not stdin.isatty():
+            for keywords in stdin:
                 self.snapshot_keywords(keywords)
         elif os.path.isfile(self.default_keywords):
             with open(self.default_keywords) as f:
@@ -41,12 +43,13 @@ class Snapshot():
         p = parse(r)
         store(keywords, p, self.config)
 
-def get_previous_snapshot(project, case, endpoint):
+def get_snapshot_aggregation(project, case, size, endpoint):
     query = Query('/home/peter/.rankt/aggs')
-    previous = query.load_query('last-snapshot-for-case.json')
+    previous = query.load_query('keywords-by-snapshot.json')
     json = query.render(
             project=project,
-            case=case
+            case=case,
+            size=size
             )
     q = '/'.join([
         endpoint, 
@@ -56,16 +59,51 @@ def get_previous_snapshot(project, case, endpoint):
     res = requests.post(q, data=json)
     return res.json()
 
-def next_snapshot_id(project, case, endpoint):
-    previous = get_previous_snapshot(project, case, endpoint)
-    previous_snapshot_id = 0
+def get_previous_snapshot(project, case, endpoint):
+    return get_snapshot_aggregation(project, case, 1, endpoint)
 
-    agg_buckets = (previous
+def parse_snapshots(agg):
+    buckets = (agg
         .get('aggregations')
-        .get('keywords')
+        .get('snapshots')
         .get('buckets'))
 
-    if len(agg_buckets):
-        previous_snapshot_id = agg_buckets[0].get('snapshots').get('buckets')[0]['key']
+    snapshots = {}
+    for snapshot in buckets:
+        snapshot_id = snapshot['key']
+        snapshots[snapshot_id] = {}
+        keywords = snapshot['keywords']['buckets']
+        for k in keywords:
+            kw = k['key']
+            hits = k['doc_positions']['hits']['hits']
+            positions = []
+            for h in hits:
+                positions.append((h['_source']['doc_position'],h['_source']['documentid']))
+            snapshots[snapshot_id][kw] = OrderedDict(positions)
+
+    return snapshots
+
+
+def next_snapshot_id(project, case, endpoint):
+    previous = get_previous_snapshot(project, case, endpoint)
+    snapshots = parse_snapshots(previous)
+    previous_snapshot_id = 0
+
+    if len(snapshots):
+        for k in snapshots:
+            previous_snapshot_id = k
 
     return previous_snapshot_id + 1
+
+def diff_last_two(project, case, endpoint):
+    agg = get_snapshot_aggregation(project, case, 2, endpoint)
+    # build comparable sets
+
+def calculate_churn(results1, results2):
+    ''' Churn is a measure of how different the two results are.'''
+    a = OrderedDict()
+    b = OrderedDict()
+    diff = []
+    for i, j in zip(a.items(), b.items()):
+        if i == j:
+            diff.append(i)

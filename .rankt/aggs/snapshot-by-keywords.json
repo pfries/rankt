@@ -1,0 +1,48 @@
+{
+    "query": {
+        "bool": {
+            "filter": [
+                { 
+                    "term": {
+                        "project": "{{ project }}"
+                    }
+                },
+                {
+                    "term": {
+                        "case": "{{ case }}"
+                    }
+                }
+            ]
+        }
+    },
+    "aggregations": {
+        "keywords": {
+            "terms": {
+                "field": "keywords",
+                "order" : { "_term" : "asc" }
+            },
+            "aggregations": {
+                "snapshots": {
+                    "terms": {
+                        "field": "snapshot",
+                        "size": {{ size }},
+                        "order" : { "_term" : "desc" }
+                    },
+                    "aggregations": {
+                        "hits": {
+                            "top_hits": { 
+                                "sort": {
+                                    "doc_position": "asc"  
+                                },
+                                "_source": {
+                                    "include": [ "documentid", "doc_position", "doc_explain", "doc_score" ]
+                                },
+                                size: 10
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
