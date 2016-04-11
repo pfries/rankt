@@ -140,8 +140,8 @@ def main():
 
     snapshot_parser = subparsers.add_parser('snapshot', help='snapshot a case')
     snapshot_parser.add_argument('case', help='the case to snapshot')
+    snapshot_parser.add_argument('query', help='the query to snapshot')
     snapshot_parser.add_argument('--keywords', '-k', nargs='?')
-    snapshot_parser.add_argument('-q', '--query', help='the case to snapshot')
     snapshot_parser.add_argument('-t', '--tags', nargs='*', help='tag for snapshot')
     snapshot_parser.set_defaults(func=snapshot)
 
