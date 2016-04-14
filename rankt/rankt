@@ -8,6 +8,7 @@ from snapshot import Snapshot, diff_last_two
 from snapshot import diff_last_two
 from store import store
 from parser import parse
+from hashlib import sha1
 import os, json, time, sys, yaml
 
 def initialized():
@@ -61,8 +62,23 @@ def snapshot(args):
     args.run_timestamp = str(int(time.time()))
 
     config = make_config(args)
+
+    config['query'] = parse_queries(config['query'])
     
     Snapshot(config).snapshot()
+
+def parse_queries(query_args):
+    queries = []
+    for q in query_args:
+        args = q.split('=')
+        query = {
+                'query_template': args[0]
+                }
+        if(len(args) > 1):
+            # has query template args
+            query['query_args'] = json.loads(args[1])
+        queries.append(query)
+    return queries
 
 def make_config(args):
     with open(args.master_config) as m, open('config.yml') as p:
@@ -117,16 +133,16 @@ def diff(args):
 def store_document(args):
     config = make_config(args)
 
-    if not sys.stdin.isatty():
-        for d in sys.stdin:
-            doc = json.loads(d)
+    for j in sys.stdin:
+        docs = json.loads(j)
+        for doc in docs:
             joined_id = '{}{}{}{}{}'.format(
                     doc['project'],
                     doc['case'],
                     doc['keywords'],
                     doc['snapshot'],
                     doc['documentid'])
-            
+        
             hashed_id = sha1(joined_id.encode()).hexdigest()
             endpoint = '/'.join([config['store_endpoint'], args.store_type, hashed_id])
             store(endpoint, doc)
@@ -157,15 +173,17 @@ def main():
 
     snapshot_parser = subparsers.add_parser('snapshot', help='snapshot a case')
     snapshot_parser.add_argument('case', help='the case to snapshot')
-    snapshot_parser.add_argument('query', help='the query to snapshot')
+    snapshot_parser.add_argument('query', nargs='+', help='the queries to snapshot')
+    snapshot_parser.add_argument('--size', '-s', help='number of docs to fetch')
     snapshot_parser.add_argument('--keywords', '-k', nargs='?')
     snapshot_parser.add_argument('-t', '--tags', nargs='*', help='tag for snapshot')
     snapshot_parser.set_defaults(func=snapshot)
 
     query_parser = subparsers.add_parser('query', help='query the search engine')
     query_parser.add_argument('case', help='the case to snapshot')
+    query_parser.add_argument('query', help='the query to snapshot')
+    query_parser.add_argument('--size', '-s', help='number of docs to fetch')
     query_parser.add_argument('--keywords', '-k', nargs='?')
-    query_parser.add_argument('-q', '--query', help='the case to snapshot')
     query_parser.add_argument('--output', '-o', nargs=1,
             choices=['json','text'], default='json')
     query_parser.add_argument('--explain-only', '-E')

@@ -10,7 +10,6 @@ from hashlib import sha1
 class Snapshot():
     def __init__(self, config):
         query = Query(config['queries_path'])
-        query.load_query(config['query'])
         self.query = query
         self.config = config
         self.default_keywords = os.path.join(config['case_path'], 'keywords')
@@ -39,24 +38,35 @@ class Snapshot():
     def snapshot_keywords(self, keywords):
         keywords = keywords.strip()
         kw = keywords.split()
-        qs = self.query.render(keywords=kw)
-        r = self.query.fetch(self.config['search_url'], self.config.get('optional_params',{}), qs)
+        queries = []
+        for q in self.config['query']:
+            self.query.load_query(q['query_template'])
+            query_args = {
+                    "keywords": kw
+                    }
+            query_args.update(q.get('query_args',{}))
+            qs = self.query.render(**query_args)
+            queries.append(qs)
+        final_query = '&'.join(queries)
+
+        opt_params = self.config.get('optional_params',{})
+        if(self.config.get('size')):
+            opt_params['rows'] = self.config['size']
+        r = self.query.fetch(self.config['search_url'], opt_params, final_query)
         p = parse(r, self.config.get('store_fields'))
         store_endpoint = self.config['store_endpoint']
         for d in p:
             snapshot_params = {
                     "project": self.config['project'],
                     "case": self.config['case'],
-                    "query": self.config['query'],
+                    "query": str(self.config['query']),
                     "snapshot": self.config['snapshot'], 
                     "timestamp": self.config['run_datetime'],
                     "keywords": keywords
                     }
 
             d.update(snapshot_params)
-            stdout.write(json.dumps(d))
-
-
+        stdout.write(json.dumps(p))
 
 def get_snapshot_aggregation(project, case, size, endpoint, page_size=10):
     query = Query('/home/peter/.rankt/aggs')
