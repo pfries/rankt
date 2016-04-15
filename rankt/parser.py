@@ -3,6 +3,10 @@ def parse(response, store_fields={}):
 
 def parse_solr(response, store_fields={}):
     solr_response = response.json()
+    if not solr_response.get('response'):
+        raise RuntimeError(str(solr_response))
+    if not solr_response.get('response').get('docs'):
+        return []
     docs = solr_response['response']['docs']
     debug = solr_response['debug']
     parsed_query = debug['parsedquery']

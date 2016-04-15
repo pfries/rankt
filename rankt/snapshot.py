@@ -21,52 +21,52 @@ class Snapshot():
                 self.config['store_endpoint']
                 )
 
+        ss = []
         if self.config.get('keywords'):
-            with open(self.config['keywords']) as f:
-                for keywords in f:
-                    self.snapshot_keywords(keywords)
-        elif not stdin.isatty():
-            for keywords in stdin:
-                self.snapshot_keywords(keywords)
-        elif os.path.isfile(self.default_keywords):
-            with open(self.default_keywords) as f:
-                for keywords in f:
-                    self.snapshot_keywords(keywords)
+            for keywords in self.config['keywords']:
+                s = self.snapshot_keywords(keywords)
+                if len(s):
+                    ss.append(s)
         else:
             raise RuntimeError('Missing keywords.')
+        return ss
 
     def snapshot_keywords(self, keywords):
-        keywords = keywords.strip()
-        kw = keywords.split()
-        queries = []
-        for q in self.config['query']:
-            self.query.load_query(q['query_template'])
-            query_args = {
-                    "keywords": kw
-                    }
-            query_args.update(q.get('query_args',{}))
-            qs = self.query.render(**query_args)
-            queries.append(qs)
-        final_query = '&'.join(queries)
+        try:
+            keywords = keywords.strip()
+            kw = keywords.split()
+            queries = []
+            for q in self.config['query']:
+                self.query.load_query(q['query_template'])
+                query_args = {
+                        "keywords": kw
+                        }
+                query_args.update(q.get('query_args',{}))
+                qs = self.query.render(**query_args)
+                queries.append(qs)
+            final_query = '&'.join(queries)
 
-        opt_params = self.config.get('optional_params',{})
-        if(self.config.get('size')):
-            opt_params['rows'] = self.config['size']
-        r = self.query.fetch(self.config['search_url'], opt_params, final_query)
-        p = parse(r, self.config.get('store_fields'))
-        store_endpoint = self.config['store_endpoint']
-        for d in p:
-            snapshot_params = {
-                    "project": self.config['project'],
-                    "case": self.config['case'],
-                    "query": str(self.config['query']),
-                    "snapshot": self.config['snapshot'], 
-                    "timestamp": self.config['run_datetime'],
-                    "keywords": keywords
-                    }
+            opt_params = self.config.get('optional_params',{})
+            if(self.config.get('size')):
+                opt_params['rows'] = self.config['size']
+            r = self.query.fetch(self.config['search_url'], opt_params, final_query)
+            p = parse(r, self.config.get('store_fields'))
+            store_endpoint = self.config['store_endpoint']
+            for d in p:
+                snapshot_params = {
+                        "project": self.config['project'],
+                        "case": self.config['case'],
+                        "query": str(self.config['query']),
+                        "snapshot": self.config['snapshot'], 
+                        "timestamp": self.config['run_datetime'],
+                        "keywords": keywords
+                        }
 
-            d.update(snapshot_params)
-        stdout.write(json.dumps(p))
+                d.update(snapshot_params)
+            return p
+        except Exception as ex:
+            print(keywords)
+            raise
 
 def get_snapshot_aggregation(project, case, size, endpoint, page_size=10):
     query = Query('/home/peter/.rankt/aggs')

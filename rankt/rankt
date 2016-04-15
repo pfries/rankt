@@ -9,7 +9,7 @@ from snapshot import diff_last_two
 from store import store
 from parser import parse
 from hashlib import sha1
-import os, json, time, sys, yaml
+import os, json, time, sys, yaml, difflib, copy
 
 def initialized():
     return os.path.exists('config.yml')
@@ -62,10 +62,62 @@ def snapshot(args):
     args.run_timestamp = str(int(time.time()))
 
     config = make_config(args)
-
     config['query'] = parse_queries(config['query'])
-    
-    Snapshot(config).snapshot()
+
+    ss = Snapshot(config).snapshot()
+    print(json.dumps(ss))
+
+def diff(args):
+    args.run_datetime = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    args.run_timestamp = str(int(time.time()))
+
+    config = make_config(args)
+    config['query'] = parse_queries(config['query'])
+
+    #d = diff_last_two(config['project'], config['case'], config['store_endpoint'])
+    queries = copy.deepcopy(config['query'])
+    if len(queries) != 2:
+        raise ValueError('Diff requires two queries')
+
+    snapshots = []
+    for q in queries:
+        config['query'] = [q]
+        ss = Snapshot(config).snapshot()
+        snapshots.append(ss)
+
+    differ = difflib.SequenceMatcher()
+    snapshot1,snapshot2 = tuple(snapshots)
+    kw_churn = [] 
+    for idx, kw in enumerate(snapshot1):
+        seq1 = []
+        current_kw = ''
+        for doc in kw:
+            seq1.append(doc['documentid'])
+            current_kw = doc['keywords']
+        seq1 = tuple(seq1)
+
+        kw2 = snapshot2[idx]
+        seq2 = []
+        for doc in kw2:
+            seq2.append(doc['documentid'])
+        seq2 = tuple(seq2)
+
+        differ.set_seqs(seq1,seq2)
+        unordered_similarity = differ.ratio()
+        differ.set_seqs(sorted(seq1),sorted(seq2))
+        sorted_similarity = differ.ratio()
+        insertions = len(set(seq1) - set(seq2))
+        churn_score = unordered_similarity * (1/insertions if insertions > 0 else 1)
+
+        kw_churn.append({
+                "keywords": current_kw,
+                "similarity": unordered_similarity,
+                "sorted_similarity": sorted_similarity,
+                "insertions": insertions,
+                "churn_score": churn_score
+                })
+
+    print(json.dumps(kw_churn))
 
 def parse_queries(query_args):
     queries = []
@@ -86,6 +138,16 @@ def make_config(args):
         project_config = yaml.load(p)
         config.update(project_config)
         config.update(vars(args))
+        keywords = []
+        if args.keywords:
+            with open(args.keywords) as f:
+                for kw in f:
+                    keywords.append(kw)
+        elif not sys.stdin.isatty():
+            for kw in sys.stdin:
+                keywords.append(kw)
+        
+        config['keywords'] = keywords
         if args.__dict__.get('case'):
             config['case'] = args.case
             config['case_path'] = os.path.join(config['cases_path'], args.case)
@@ -125,10 +187,6 @@ def query(args):
     except Exception as e:
         raise RuntimeError('An error occured.') from e
 
-def diff(args):
-    config = make_config(args)
-    d = diff_last_two(config['project'], config['case'], config['store_endpoint'])
-    print(json.dumps(d))
 
 def store_document(args):
     config = make_config(args)
@@ -190,7 +248,10 @@ def main():
     query_parser.set_defaults(func=query)
 
     diff_parser = subparsers.add_parser('diff', help='diff search results')
-    diff_parser.add_argument('case', help='the name of the case')
+    diff_parser.add_argument('case', help='the case to snapshot')
+    diff_parser.add_argument('query', nargs='+', help='the queries to snapshot')
+    diff_parser.add_argument('--size', '-s', help='number of docs to fetch')
+    diff_parser.add_argument('--keywords', '-k', nargs='?')
     diff_parser.set_defaults(func=diff)
 
     store_parser = subparsers.add_parser('store', help='store documents')
