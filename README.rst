@@ -1,4 +1,5 @@
-# Intro
+Intro
+=====
 
 rankt is a suite of tools for tracking and testing search relevancy
 
@@ -10,9 +11,11 @@ rankt requires Python 3
 ## Install dependencies
 ```pip install -r requirements.txt```
 
-# Commands
+Commands
+========
 
-## Initializing a new project
+Initializing a new project
+--------------------------
 
 `rankt init -h` for more info.
 
@@ -20,7 +23,8 @@ Basic example:
 
 rankt init --search-url [the url of your solr core select handler]
 
-## Start a new case
+Start a new case
+----------------
 
 `rankt create -h` for more info.
 
@@ -33,7 +37,8 @@ experiments.
 
 Queries support jinja2 template syntax.
 
-## Snapshot document positions at time T
+Snapshot document positions at time T
+-------------------------------------
 
 `rankt snapshot -h` for more info.
 
