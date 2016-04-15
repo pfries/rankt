@@ -3,12 +3,17 @@ Intro
 
 rankt is a suite of tools for tracking and testing search relevancy
 
-# Setup
+Setup
+-----
 rankt requires Python 3
 
-## Create a virtual environment
+Create a virtual environment
+****************************
+
 ```pyvenv venv```
-## Install dependencies
+
+Install dependencies
+********************
 ```pip install -r requirements.txt```
 
 Commands
