@@ -2,14 +2,16 @@ from jinja2 import Template, Environment, FileSystemLoader
 import requests
 
 class Query:
-    def __init__(self, queries_path):
-        env = Environment(loader=FileSystemLoader(
-            queries_path, encoding='utf-8'))
-        env.trim_blocks = True
-        env.lstrip_blocks = True
-        self.env = env
+    def __init__(self, queries_config, queries_paths):
+        queries = Environment(loader=FileSystemLoader(
+            queries_paths, encoding='utf-8'))
+        queries.trim_blocks = True
+        queries.lstrip_blocks = True
+        self.queries = queries
 
     def load_query(self, query):
+        # find query in configs or queries/
+        
         self.query = self.env.get_template(query)
 
     def render(self, **args):

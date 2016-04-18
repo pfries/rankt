@@ -20,8 +20,9 @@ def parse_solr(response, store_fields={}):
                 "doc_explain": debug['explain'][doc['documentid']],
                 "parsed_query": parsed_query
             }
-        for k,v in store_fields.items():
-            p[k] = doc[v]
+        if store_fields:
+            for k,v in store_fields.items():
+                p[k] = doc[v]
 
         positions.append(p)
     return positions
