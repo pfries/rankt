@@ -39,11 +39,11 @@ rankt top [--size=[defaults config['size']]] <query>
 rankt diff
 ----------
 rankt diff <hits1> <hits2> [--side-by-side | --churn]
-rankt diff --query <query1> <query2> [--size=n] [--keywords=filename] [--side-by-side | --churn,-c]
+rankt diff --query <query1> <query2> [--size=n] [--keywords=filename] [--side-by-side | --churn,-x]
 
 examples
 ========
-rankt diff -c <(rankt top -s 3 q1) <(rankt top -s3 q2)
+rankt diff -x <(rankt top -s 3 q1) <(rankt top -s3 q2)
 rankt diff -q q1 q2 -y <(cat keywords)
 
 rankt store
