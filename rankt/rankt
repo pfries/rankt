@@ -180,8 +180,8 @@ def diff(args):
         top_hits2 = _top(config)
     else:
         with open(args.hits[0]) as h1, open(args.hits[1]) as h2:
-            top_hits1 = h1.read()
-            top_hits2 = h2.read()
+            top_hits1 = json.loads(h1.read())
+            top_hits2 = json.loads(h2.read())
 
     differ = difflib.SequenceMatcher()
     kw_churn = [] 
