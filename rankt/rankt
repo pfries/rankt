@@ -102,14 +102,11 @@ def _parse_queries(query_arg):
 def _parse_query_option(query_arg):
     args = query_arg.split('=')
     query_name = args[0]
-    query = {
-            query_name: { 'args':None }
-            }
+    query_args = None
+    # only parse override properties
     if(len(args) > 1):
-        # has query template args
-        query[query_name]['args'] = json.loads(args[1])
-    return query_name, query
-
+        query_args = json.loads(args[1])
+    return query_name, query_args
 
 def create(args):
     '''
@@ -141,10 +138,19 @@ def create(args):
     except OSError as ose:
         raise RuntimeError('Cannot create case.') from ose
 
-def _top(args):
-    config = _load_configs(args)
-    query_name, query = _parse_query_option(config['query'])
-    config = _merge(config, { 'queries':query })
+def _top(config):
+    query_name, query_args = _parse_query_option(config['query'])
+    if query_args:
+        config = _merge(config, { 
+            'queries': { 
+                query_name: { 
+                    'args': query_args
+                    }
+                }
+            })
+    return Top(config).top(query_name, config['keywords'])
+
+def _read_keywords(args):
     keywords = []
     if args.keywords:
         with open(args.keywords) as f:
@@ -154,15 +160,62 @@ def _top(args):
         for kw in sys.stdin:
             keywords.append(kw)
     
-    config['keywords'] = keywords
-    return Top(config).top(query_name, config['keywords'])
+    return keywords
 
 def top(args):
-    top_hits = _top(args)
+    config = _load_configs(args)
+    config['keywords'] = _read_keywords(args)
+    top_hits = _top(config)
     print(json.dumps(top_hits))
 
-def _diff(args):
-    pass
+def diff(args):
+    config = _load_configs(args)
+    config['keywords'] = _read_keywords(args)
+    top_hits1,top_hits2 = [],[]
+    if args.with_query:
+        # treat hits as queries to run
+        config['query'] = args.hits[0]
+        top_hits1 = _top(config)
+        config['query'] = args.hits[1]
+        top_hits2 = _top(config)
+    else:
+        with open(args.hits[0]) as h1, open(args.hits[1]) as h2:
+            top_hits1 = h1.read()
+            top_hits2 = h2.read()
+
+    differ = difflib.SequenceMatcher()
+    kw_churn = [] 
+    for idx, kw in enumerate(top_hits1):
+        seq1 = []
+        current_kw = ''
+        for doc in kw:
+            seq1.append(doc['documentid'])
+            current_kw = doc['keywords']
+        seq1 = tuple(seq1)
+
+        kw2 = top_hits2[idx]
+        seq2 = []
+        for doc in kw2:
+            seq2.append(doc['documentid'])
+        seq2 = tuple(seq2)
+
+        differ.set_seqs(seq1,seq2)
+        unordered_similarity = differ.ratio()
+        differ.set_seqs(sorted(seq1),sorted(seq2))
+        sorted_similarity = differ.ratio()
+        insertions = len(set(seq1) - set(seq2))
+        churn_score = unordered_similarity * (1/insertions if insertions > 0 else 1)
+
+        kw_churn.append({
+                "keywords": current_kw,
+                "similarity": unordered_similarity,
+                "sorted_similarity": sorted_similarity,
+                "insertions": insertions,
+                "churn_score": churn_score
+                })
+
+    print(json.dumps(kw_churn))
+
 
 def snapshot(args):
     args.run_datetime = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
@@ -174,22 +227,15 @@ def snapshot(args):
     ss = Snapshot(config).snapshot()
     print(json.dumps(ss))
 
-def diff(args):
-    args.run_datetime = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-    args.run_timestamp = str(int(time.time()))
-
-    config = make_config(args)
-    config['query'] = _parse_queries(config['query'])
-
-    #d = diff_last_two(config['project'], config['case'], config['store_endpoint'])
+def diff2(args):
     queries = copy.deepcopy(config['query'])
     if len(queries) != 2:
         raise ValueError('Diff requires two queries')
 
-    snapshots = []
+    top_hits = []
     for q in queries:
         config['query'] = [q]
-        ss = Snapshot(config).snapshot()
+        ss = Top(config).top()
         snapshots.append(ss)
 
     differ = difflib.SequenceMatcher()
@@ -317,10 +363,14 @@ def main():
     top_parser.set_defaults(func=top)
 
     diff_parser = subparsers.add_parser('diff', help='diff search results')
-    diff_parser.add_argument('case', help='the case to snapshot')
-    diff_parser.add_argument('query', nargs='+', help='the queries to snapshot')
+    diff_parser.add_argument('hits', nargs=2, help='the hits to diff')
+    diff_parser.add_argument('--with-query', '-q', action='store_true', help='diff queries')
     diff_parser.add_argument('--size', '-s', help='number of docs to fetch')
     diff_parser.add_argument('--keywords', '-k', nargs='?')
+    diff_parser.add_argument('--case', '-c',
+            default=os.path.basename(os.getcwd()), 
+            help='the case (default: pwd)'
+            )
     diff_parser.set_defaults(func=diff)
 
     store_parser = subparsers.add_parser('store', help='store documents')

@@ -19,7 +19,8 @@ class Top():
             if self.context.get('queries'):
                 query_config = self.context['queries']
                 if query_config.get(query) and query_config[query].get('path'):
-                    return Template(query_config[query]['path'])
+                    with open(query_config[query]['path']) as t:
+                        return Template(t.read())
 
             # otherwise, load from known paths
             lookup_paths = 'queries'
