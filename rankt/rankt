@@ -9,7 +9,8 @@ from store import store
 from parser import parse
 from top import Top
 from hashlib import sha1
-import os, json, time, sys, yaml, difflib, copy
+import os, json, time, sys, yaml, difflib, copy, io, csv
+import tempfile, subprocess
 
 def _load_master_config():
     master_config = os.path.join(
@@ -183,125 +184,74 @@ def diff(args):
             top_hits1 = json.loads(h1.read())
             top_hits2 = json.loads(h2.read())
 
-    differ = difflib.SequenceMatcher()
-    kw_churn = [] 
-    for idx, kw in enumerate(top_hits1):
-        seq1 = []
-        current_kw = ''
-        for doc in kw:
-            seq1.append(doc['documentid'])
-            current_kw = doc['keywords']
-        seq1 = tuple(seq1)
+    if args.churn:
+        differ = difflib.SequenceMatcher()
+        kw_churn = [] 
+        for idx, kw in enumerate(top_hits1):
+            seq1 = []
+            current_kw = ''
+            for doc in kw:
+                seq1.append(doc['documentid'])
+                current_kw = doc['keywords']
+            seq1 = tuple(seq1)
 
-        kw2 = top_hits2[idx]
-        seq2 = []
-        for doc in kw2:
-            seq2.append(doc['documentid'])
-        seq2 = tuple(seq2)
+            kw2 = top_hits2[idx]
+            seq2 = []
+            for doc in kw2:
+                seq2.append(doc['documentid'])
+            seq2 = tuple(seq2)
 
-        differ.set_seqs(seq1,seq2)
-        unordered_similarity = differ.ratio()
-        differ.set_seqs(sorted(seq1),sorted(seq2))
-        sorted_similarity = differ.ratio()
-        insertions = len(set(seq1) - set(seq2))
-        churn_score = unordered_similarity * (1/insertions if insertions > 0 else 1)
+            differ.set_seqs(seq1,seq2)
+            unordered_similarity = differ.ratio()
+            differ.set_seqs(sorted(seq1),sorted(seq2))
+            sorted_similarity = differ.ratio()
+            insertions = len(set(seq1) - set(seq2))
+            churn_score = unordered_similarity * (1/insertions if insertions > 0 else 1)
 
-        kw_churn.append({
-                "keywords": current_kw,
-                "similarity": unordered_similarity,
-                "sorted_similarity": sorted_similarity,
-                "insertions": insertions,
-                "churn_score": churn_score
-                })
+            kw_churn.append({
+                    "keywords": current_kw,
+                    "similarity": unordered_similarity,
+                    "sorted_similarity": sorted_similarity,
+                    "insertions": insertions,
+                    "churn_score": churn_score
+                    })
 
-    print(json.dumps(kw_churn))
-
-
-def snapshot(args):
-    args.run_datetime = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-    args.run_timestamp = str(int(time.time()))
-
-    config = make_config(args)
-    config['query'] = _parse_queries(config['query'])
-
-    ss = Snapshot(config).snapshot()
-    print(json.dumps(ss))
-
-def diff2(args):
-    queries = copy.deepcopy(config['query'])
-    if len(queries) != 2:
-        raise ValueError('Diff requires two queries')
-
-    top_hits = []
-    for q in queries:
-        config['query'] = [q]
-        ss = Top(config).top()
-        snapshots.append(ss)
-
-    differ = difflib.SequenceMatcher()
-    snapshot1,snapshot2 = tuple(snapshots)
-    kw_churn = [] 
-    for idx, kw in enumerate(snapshot1):
-        seq1 = []
-        current_kw = ''
-        for doc in kw:
-            seq1.append(doc['documentid'])
-            current_kw = doc['keywords']
-        seq1 = tuple(seq1)
-
-        kw2 = snapshot2[idx]
-        seq2 = []
-        for doc in kw2:
-            seq2.append(doc['documentid'])
-        seq2 = tuple(seq2)
-
-        differ.set_seqs(seq1,seq2)
-        unordered_similarity = differ.ratio()
-        differ.set_seqs(sorted(seq1),sorted(seq2))
-        sorted_similarity = differ.ratio()
-        insertions = len(set(seq1) - set(seq2))
-        churn_score = unordered_similarity * (1/insertions if insertions > 0 else 1)
-
-        kw_churn.append({
-                "keywords": current_kw,
-                "similarity": unordered_similarity,
-                "sorted_similarity": sorted_similarity,
-                "insertions": insertions,
-                "churn_score": churn_score
-                })
-
-    print(json.dumps(kw_churn))
-
-def make_config(args):
-    with open(args.master_config) as m, open('config.yml') as p:
-        config = yaml.load(m)
-        project_config = yaml.load(p)
-        config.update(project_config)
-        config.update(vars(args))
-        keywords = []
-        if args.keywords:
-            with open(args.keywords) as f:
-                for kw in f:
-                    keywords.append(kw)
-        elif not sys.stdin.isatty():
-            for kw in sys.stdin:
-                keywords.append(kw)
-        
-        config['keywords'] = keywords
-        if args.__dict__.get('case'):
-            config['case'] = args.case
-            config['case_path'] = os.path.join(config['cases_path'], args.case)
-            config['queries_path'] = os.path.join(config['case_path'], config['queries_path'])
-        return config
-
-def format_output(response, format):
-    if format == 'json':
-        return json.dumps(parse(response))
-    elif format == 'text':
-        return str(parse(response))
+        print(json.dumps(kw_churn))
     else:
-        print(response)
+        for idx, kw in enumerate(top_hits1):
+            kw_h1_rows = io.StringIO()
+            kw_h2_rows = io.StringIO()
+            # flatten to file
+            field_names = ['doc_position','keywords','documentid','doc_title']
+            writer1 = csv.DictWriter(kw_h1_rows, field_names,
+                                    extrasaction='ignore',
+                                    lineterminator='\n')
+            writer2 = csv.DictWriter(kw_h2_rows, field_names,
+                                    extrasaction='ignore',
+                                    lineterminator='\n')
 
+            writer1.writerows(kw)
+            writer2.writerows(top_hits2[idx])
+
+            text1 = kw_h1_rows.getvalue()
+            kw_h1_rows.close()
+            text2 = kw_h2_rows.getvalue()
+            kw_h2_rows.close()
+
+            temp_1 = tempfile.NamedTemporaryFile('w+', delete = False)
+            temp_1.write(text1)
+            temp_1.flush()
+
+            temp_2 = tempfile.NamedTemporaryFile('w+', delete = False)
+            temp_2.write(text2)
+            temp_2.flush()
+
+            if args.side_by_side:
+                subprocess.Popen(['sdiff', '--width=200', '--ignore-all-space', 
+                    temp_1.name, temp_2.name])
+            else:
+                subprocess.Popen(['diff', 
+                    temp_1.name, temp_2.name])
 
 def store_document(args):
     config = make_config(args)
@@ -344,14 +294,6 @@ def main():
     create_parser.add_argument('--keywords', '-k', nargs='?')
     create_parser.set_defaults(func=create)
 
-    snapshot_parser = subparsers.add_parser('snapshot', help='snapshot a case')
-    snapshot_parser.add_argument('case', help='the case to snapshot')
-    snapshot_parser.add_argument('query', nargs='+', help='the queries to snapshot')
-    snapshot_parser.add_argument('--size', '-s', help='number of docs to fetch')
-    snapshot_parser.add_argument('--keywords', '-k', nargs='?')
-    snapshot_parser.add_argument('-t', '--tags', nargs='*', help='tag for snapshot')
-    snapshot_parser.set_defaults(func=snapshot)
-
     top_parser = subparsers.add_parser('top', help='get top results')
     top_parser.add_argument('query', help='the query')
     top_parser.add_argument('--size', '-s', help='number of results')
@@ -367,6 +309,11 @@ def main():
     diff_parser.add_argument('--with-query', '-q', action='store_true', help='diff queries')
     diff_parser.add_argument('--size', '-s', help='number of docs to fetch')
     diff_parser.add_argument('--keywords', '-k', nargs='?')
+    diff_parser.add_argument('--churn', '-x', 
+            action='store_true', help='output churn report')
+    diff_parser.add_argument('--side-by-side', '-y', 
+            action='store_true', help='show sdiff output format')
+
     diff_parser.add_argument('--case', '-c',
             default=os.path.basename(os.getcwd()), 
             help='the case (default: pwd)'
